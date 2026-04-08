@@ -1,4 +1,0 @@
-<Solution>
-  <Project Path="OidcServer/OidcServer.csproj" />
-  <Project Path="OidcWebClient/OidcWebClient.csproj" />
-</Solution>

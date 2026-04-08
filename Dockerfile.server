@@ -1,33 +1,19 @@
-﻿# syntax=docker/dockerfile:1.4
-
-#####################################
-# Build stage
-#####################################
+﻿# Stage 1: Build
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
-
 WORKDIR /src
 
-# 1. Copy project/solution file và restore (cache layer)
-COPY MyOidcServer/MyOidcServer.sln ./
-COPY MyOidcServer/OidcServer/*.csproj ./OidcServer/
-RUN dotnet restore MyOidcServer.sln
+# Copy server project
+COPY MyOidcServer/OidcServer/*.csproj ./ 
+RUN dotnet restore
 
-# 2. Copy toàn bộ source code
-COPY MyOidcServer ./MyOidcServer
-
-# 3. Build release
-WORKDIR /src/MyOidcServer/OidcServer
+# Copy all server code
+COPY MyOidcServer/OidcServer/ ./
 RUN dotnet publish -c Release -o /app/publish
 
-#####################################
-# Runtime stage
-#####################################
+# Stage 2: Runtime
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
 WORKDIR /app
-COPY --from=build /app/publish ./
+COPY --from=build /app/publish .
 
-# Expose port API
 EXPOSE 5000
-
-# Entry point
 ENTRYPOINT ["dotnet", "OidcServer.dll"]

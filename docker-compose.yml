@@ -1,9 +1,3 @@
-version: "3.9"
-
-networks:
-  oidc-net:
-    driver: bridge
-
 services:
   api:
     build:
@@ -14,8 +8,6 @@ services:
       - "5000:5000"
     networks:
       - oidc-net
-    environment:
-      - ASPNETCORE_ENVIRONMENT=Development
 
   client:
     build:
@@ -23,6 +15,12 @@ services:
       dockerfile: Dockerfile.client
     container_name: oidc-client
     ports:
-      - "8080:8080"
+      - "5001:80"
     networks:
       - oidc-net
+    depends_on:
+      - api
+
+networks:
+  oidc-net:
+    driver: bridge

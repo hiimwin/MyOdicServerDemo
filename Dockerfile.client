@@ -1,34 +1,18 @@
-﻿# syntax=docker/dockerfile:1.4
+﻿# Stage 1: Build
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+WORKDIR /src
 
-#####################################
-# Build stage
-#####################################
-FROM node:20 AS build
+# Copy client project
+COPY MyOidcServer/OidcWebClient/*.csproj ./ 
+RUN dotnet restore
 
-WORKDIR /app
+# Copy all client code
+COPY MyOidcServer/OidcWebClient/ ./
+RUN dotnet publish -c Release -o /app/publish
 
-# 1. Copy package.json và package-lock.json
-COPY client/package*.json ./
+# Stage 2: Runtime
+FROM nginx:alpine
+COPY --from=build /app/publish /usr/share/nginx/html
 
-# 2. Install dependencies
-RUN npm ci
-
-# 3. Copy toàn bộ source
-COPY client/ .
-
-# 4. Build production
-RUN npm run build
-
-#####################################
-# Runtime stage (serve static)
-#####################################
-FROM nginx:alpine AS runtime
-
-# Copy build output vào nginx html
-COPY --from=build /app/dist /usr/share/nginx/html
-
-# Expose port
-EXPOSE 8080
-
-# Nginx entrypoint
+EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
