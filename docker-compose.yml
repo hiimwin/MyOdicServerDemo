@@ -1,20 +1,31 @@
-services:
-  oidc-server:
-    image: oidc-server-${BRANCH_SUFFIX}:latest
-    container_name: oidc-server
-    ports:
-      - "80:80"
-    networks:
-      - branch_net-${BRANCH_SUFFIX}
+version: '3.9'
 
+services:
   oidc-client:
-    image: oidc-client-${BRANCH_SUFFIX}:latest
-    container_name: oidc-client
-    depends_on:
-      - oidc-server
+    image: oidc-client-BRANCH_SUFFIX
+    build:
+      context: .
+      dockerfile: Dockerfile.client
     networks:
-      - branch_net-${BRANCH_SUFFIX}
+      - branch_net-BRANCH_SUFFIX
+    ports:
+      - "5001:80"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - OIDC_SERVER_URL=http://oidc-server-BRANCH_SUFFIX:5000
+
+  oidc-server:
+    image: oidc-server-BRANCH_SUFFIX
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    networks:
+      - branch_net-BRANCH_SUFFIX
+    ports:
+      - "5000:80"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
 
 networks:
-  branch_net-${BRANCH_SUFFIX}:
-    external: true
+  branch_net-BRANCH_SUFFIX:
+    driver: bridge
