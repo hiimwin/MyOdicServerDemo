@@ -11,7 +11,7 @@ pipeline {
     }
 
     stages {
-        stage('Prepare') {
+        stage('Check Docker') {
             steps {
                 script {
                     sh 'docker --version || { echo "Docker not found"; exit 1; }'
@@ -33,42 +33,48 @@ pipeline {
             }
         }
 
-        stage('Build & Run Docker Compose') {
+        stage('Build & Start Docker Compose') {
             steps {
                 dir('MyOidcServerDemo') {
-                    sh '''
-                    echo "Stopping old containers..."
-                    docker-compose down -v || true
+                    script {
+                        sh '''
+                        echo "Stopping old containers..."
+                        docker-compose down -v || true
 
-                    echo "Building containers..."
-                    docker-compose build
+                        echo "Building containers..."
+                        docker-compose build
 
-                    echo "Starting containers..."
-                    docker-compose up -d
-                    '''
+                        echo "Starting containers..."
+                        docker-compose up -d
+                        '''
+                    }
                 }
             }
         }
 
         stage('Wait for API') {
             steps {
-                sh '''
-                echo "Waiting for API on localhost:${API_PORT}..."
-                for i in {1..12}; do
-                    curl -s http://localhost:${API_PORT} && break
-                    echo "Waiting 5s..."
-                    sleep 5
-                done
-                '''
+                script {
+                    sh """
+                    echo "Waiting for API on localhost:${API_PORT}..."
+                    for i in {1..12}; do
+                        curl -s http://localhost:${API_PORT} && break
+                        echo "Waiting 5s..."
+                        sleep 5
+                    done
+                    """
+                }
             }
         }
 
         stage('Test Client') {
             steps {
-                sh '''
-                echo "Testing Client on localhost:${CLIENT_PORT}..."
-                curl -s http://localhost:${CLIENT_PORT} || exit 1
-                '''
+                script {
+                    sh """
+                    echo "Testing Client on localhost:${CLIENT_PORT}..."
+                    curl -s http://localhost:${CLIENT_PORT} || exit 1
+                    """
+                }
             }
         }
 
@@ -76,14 +82,16 @@ pipeline {
             when { branch 'master' }
             steps {
                 dir('MyOidcServerDemo') {
-                    docker.withRegistry('https://docker.io', 'dockerhub-creds') {
-                        sh """
-                        docker-compose build
-                        docker tag oidc-app_api:latest $REPO_API_IMAGE:latest
-                        docker tag oidc-app_client:latest $REPO_CLIENT_IMAGE:latest
-                        docker push $REPO_API_IMAGE:latest
-                        docker push $REPO_CLIENT_IMAGE:latest
-                        """
+                    script {
+                        docker.withRegistry('https://docker.io', 'dockerhub-creds') {
+                            sh """
+                            docker-compose build
+                            docker tag oidc-app_api:latest $REPO_API_IMAGE:latest
+                            docker tag oidc-app_client:latest $REPO_CLIENT_IMAGE:latest
+                            docker push $REPO_API_IMAGE:latest
+                            docker push $REPO_CLIENT_IMAGE:latest
+                            """
+                        }
                     }
                 }
             }
