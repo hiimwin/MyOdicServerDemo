@@ -3,30 +3,39 @@ pipeline {
 
     environment {
         COMPOSE_PROJECT_NAME = "oidc-app"
-        REPO_API = "hiimwin/oidc-api"
-        REPO_CLIENT = "hiimwin/oidc-client"
+        REPO_URL = "https://github.com/hiimwin/MyOdicServerDemo.git"
+        REPO_API_IMAGE = "hiimwin/oidc-api"
+        REPO_CLIENT_IMAGE = "hiimwin/oidc-client"
     }
 
     stages {
-
-        stage('Checkout') {
+        stage('Clone Repo') {
             steps {
-                checkout scm
+                script {
+                    // Xóa folder nếu tồn tại trước khi clone
+                    sh '''
+                    if [ -d "MyOdicServerDemo" ]; then
+                        rm -rf MyOdicServerDemo
+                    fi
+                    git clone $REPO_URL
+                    '''
+                }
             }
         }
 
-        stage('Build & Run with Docker Compose') {
+        stage('Build & Run Docker Compose') {
             steps {
-                script {
-                    // Build & run all containers
-                    sh """
+                dir('MyOdicServerDemo') {
+                    sh '''
                     echo "Stopping old containers..."
                     docker-compose down -v || true
 
-                    echo "Building & starting containers..."
+                    echo "Building containers..."
                     docker-compose build
+
+                    echo "Starting containers..."
                     docker-compose up -d
-                    """
+                    '''
                 }
             }
         }
@@ -34,7 +43,7 @@ pipeline {
         stage('Wait for API') {
             steps {
                 sh '''
-                echo "Waiting for API to be ready..."
+                echo "Waiting for API on localhost:5000..."
                 for i in {1..12}; do
                     curl -s http://localhost:5000 && break
                     echo "Waiting 5s..."
@@ -47,24 +56,26 @@ pipeline {
         stage('Test Client') {
             steps {
                 sh '''
-                echo "Testing Client..."
+                echo "Testing Client on localhost:5001..."
                 curl -s http://localhost:5001 || exit 1
                 '''
             }
         }
 
-        stage('Push Images (Master Only)') {
+        stage('Push Docker Images (Master Only)') {
             when { branch 'master' }
             steps {
-                script {
-                    docker.withRegistry('https://docker.io', 'dockerhub-creds') {
-                        sh '''
-                        docker-compose build
-                        docker tag oidc-app_api:latest hiimwin/oidc-api:latest
-                        docker tag oidc-app_client:latest hiimwin/oidc-client:latest
-                        docker push hiimwin/oidc-api:latest
-                        docker push hiimwin/oidc-client:latest
-                        '''
+                dir('MyOdicServerDemo') {
+                    script {
+                        docker.withRegistry('https://docker.io', 'dockerhub-creds') {
+                            sh '''
+                            docker-compose build
+                            docker tag oidc-app_api:latest $REPO_API_IMAGE:latest
+                            docker tag oidc-app_client:latest $REPO_CLIENT_IMAGE:latest
+                            docker push $REPO_API_IMAGE:latest
+                            docker push $REPO_CLIENT_IMAGE:latest
+                            '''
+                        }
                     }
                 }
             }
@@ -77,11 +88,15 @@ pipeline {
         }
         failure {
             echo "CI/CD FAILED - Showing logs..."
-            sh 'docker-compose logs'
+            dir('MyOdicServerDemo') {
+                sh 'docker-compose logs || true'
+            }
         }
         always {
             echo "Cleaning up containers..."
-            sh 'docker-compose down -v || true'
+            dir('MyOdicServerDemo') {
+                sh 'docker-compose down -v || true'
+            }
         }
     }
 }
