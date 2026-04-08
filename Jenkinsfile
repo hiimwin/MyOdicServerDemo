@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         COMPOSE_PROJECT_NAME = "oidc-app"
-        REPO_URL = "https://github.com/hiimwin/MyOdicServerDemo.git"
+        REPO_URL = "https://github.com/hiimwin/MyOidcServerDemo.git"
         REPO_API_IMAGE = "hiimwin/oidc-api"
         REPO_CLIENT_IMAGE = "hiimwin/oidc-client"
     }
@@ -14,8 +14,8 @@ pipeline {
                 script {
                     // Xóa folder nếu tồn tại trước khi clone
                     sh '''
-                    if [ -d "MyOdicServerDemo" ]; then
-                        rm -rf MyOdicServerDemo
+                    if [ -d "MyOidcServerDemo" ]; then
+                        rm -rf MyOidcServerDemo
                     fi
                     git clone $REPO_URL
                     '''
@@ -25,7 +25,7 @@ pipeline {
 
         stage('Build & Run Docker Compose') {
             steps {
-                dir('MyOdicServerDemo') {
+                dir('MyOidcServerDemo') {
                     sh '''
                     echo "Stopping old containers..."
                     docker-compose down -v || true
@@ -65,7 +65,7 @@ pipeline {
         stage('Push Docker Images (Master Only)') {
             when { branch 'master' }
             steps {
-                dir('MyOdicServerDemo') {
+                dir('MyOidcServerDemo') {
                     script {
                         docker.withRegistry('https://docker.io', 'dockerhub-creds') {
                             sh '''
@@ -88,13 +88,13 @@ pipeline {
         }
         failure {
             echo "CI/CD FAILED - Showing logs..."
-            dir('MyOdicServerDemo') {
+            dir('MyOidcServerDemo') {
                 sh 'docker-compose logs || true'
             }
         }
         always {
             echo "Cleaning up containers..."
-            dir('MyOdicServerDemo') {
+            dir('MyOidcServerDemo') {
                 sh 'docker-compose down -v || true'
             }
         }

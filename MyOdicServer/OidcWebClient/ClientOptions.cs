@@ -1,4 +1,4 @@
-﻿namespace OidcWebClient
+namespace OidcWebClient
 {
     public class ClientOptions
     {

@@ -1,4 +1,4 @@
-﻿using OidcServer.Models;
+using OidcServer.Models;
 
 namespace OidcServer.Repositories
 {

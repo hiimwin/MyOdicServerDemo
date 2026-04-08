@@ -3,7 +3,7 @@ WORKDIR /src
 
 COPY . .
 
-WORKDIR /src/MyOdicServer/OidcServer
+WORKDIR /src/MyOidcServer/OidcServer
 RUN dotnet restore
 RUN dotnet publish -c Release -o /app/publish
 
