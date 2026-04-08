@@ -1,17 +1,13 @@
-﻿# Dockerfile.client
+﻿# Build stage
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
-
 COPY MyOidcServer/OidcWebClient/*.csproj ./
 RUN dotnet restore
-
 COPY MyOidcServer/OidcWebClient/ ./
 RUN dotnet publish -c Release -o /app/publish
 
-FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
+# Runtime stage
+FROM mcr.microsoft.com/dotnet/aspnet:8.0
 WORKDIR /app
 COPY --from=build /app/publish .
-
-ENV DOTNET_ENVIRONMENT=Docker
-EXPOSE 5001
 ENTRYPOINT ["dotnet", "OidcWebClient.dll"]

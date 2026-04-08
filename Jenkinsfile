@@ -1,62 +1,81 @@
 pipeline {
     agent any
-    options {
-        skipDefaultCheckout()
-        timeout(time: 30, unit: 'MINUTES')
-    }
 
     environment {
-        REGISTRY = "your-docker-registry.com" // ví dụ: docker.io/hiimwin
-        SERVER_IMAGE = "${REGISTRY}/oidc-server"
-        CLIENT_IMAGE = "${REGISTRY}/oidc-client"
+        BRANCH_NAME_SAFE = "${env.BRANCH_NAME.replaceAll('/', '_')}"
+        BRANCH_SUFFIX = "${BRANCH_NAME_SAFE}"
     }
 
     stages {
-        stage('Checkout') {
+
+        stage('Checkout SCM') {
             steps {
-                checkout scm // Multi-branch tự chọn nhánh
+                checkout scm
             }
         }
 
-        stage('Check Docker') {
+        stage('Check Docker & Compose') {
             steps {
                 sh 'docker --version'
                 sh 'docker-compose --version'
             }
         }
 
+        stage('Prepare docker-compose for branch') {
+            steps {
+                script {
+                    // Tạo file docker-compose riêng cho branch
+                    sh "sed 's/BRANCH_SUFFIX/${BRANCH_SUFFIX}/g' docker-compose.yml > docker-compose.branch.yml"
+                    env.COMPOSE_FILE = "${env.WORKSPACE}/docker-compose.branch.yml"
+                }
+            }
+        }
+
+        stage('Parse docker-compose.yml') {
+            steps {
+                script {
+                    def images = sh(script: "docker-compose -f ${env.COMPOSE_FILE} config | grep image: | awk '{print \$2}'", returnStdout: true).trim().split("\n")
+                    echo "Detected images: ${images}"
+                    env.IMAGES = images.join(' ')
+                }
+            }
+        }
+
         stage('Build Docker Images') {
             steps {
-                dir('MyOidcServerDemo') {
-                    sh 'docker-compose build'
+                dir("${env.WORKSPACE}") {
+                    script {
+                        // Build client
+                        sh "docker build -t oidc-client-${BRANCH_SUFFIX} -f Dockerfile.client ."
+                        // Build server
+                        sh "docker build -t oidc-server-${BRANCH_SUFFIX} -f Dockerfile.server ."
+                    }
+                }
+            }
+        }
+
+        stage('Create Network') {
+            steps {
+                script {
+                    sh "docker network create branch_net-${BRANCH_SUFFIX} || true"
+                    echo "Network created: branch_net-${BRANCH_SUFFIX}"
                 }
             }
         }
 
         stage('Start Containers for Test') {
             steps {
-                dir('MyOidcServerDemo') {
-                    sh 'docker-compose up -d'
+                script {
+                    sh "docker-compose -f ${env.COMPOSE_FILE} up -d"
                 }
             }
         }
 
-        stage('Test Containers') {
+        stage('Smoke Test Containers') {
             steps {
-                echo 'Optional: Add smoke tests here, e.g., curl http://localhost:5000/.well-known/openid-configuration'
-            }
-        }
-
-        stage('Push Docker Images (Master Only)') {
-            when {
-                branch 'master'
-            }
-            steps {
-                dir('MyOidcServerDemo') {
-                    sh "docker tag oidc-server:latest ${SERVER_IMAGE}:latest"
-                    sh "docker tag oidc-client:latest ${CLIENT_IMAGE}:latest"
-                    sh "docker push ${SERVER_IMAGE}:latest"
-                    sh "docker push ${CLIENT_IMAGE}:latest"
+                script {
+                    // ví dụ test server chạy OK
+                    sh "docker ps"
                 }
             }
         }
@@ -64,10 +83,11 @@ pipeline {
 
     post {
         always {
-            echo 'Cleaning up containers...'
-            dir('MyOidcServerDemo') {
-                sh 'docker-compose down -v'
-                sh 'docker-compose logs'
+            script {
+                echo "Cleaning up containers, network, and dangling images..."
+                sh "docker-compose -f ${env.COMPOSE_FILE} down -v || true"
+                sh "docker network rm branch_net-${BRANCH_SUFFIX} || true"
+                sh "docker system prune -f || true"
             }
         }
     }
