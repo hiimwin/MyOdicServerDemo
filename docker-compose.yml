@@ -1,25 +1,20 @@
-services:
-  server:
-    build:
-      context: .
-      dockerfile: Dockerfile.server
-    image: oidc-server
-    container_name: oidc-server
-    ports:
-      - "5000:5000"
-    environment:
-      - DOTNET_ENVIRONMENT=Docker
+version: "3.9"
 
-  client:
-    build:
-      context: .
-      dockerfile: Dockerfile.client
-    image: oidc-client
-    container_name: oidc-client
-    ports:
-      - "5001:5001"
+services:
+  oidc-server:
+    image: oidc-server-${BRANCH_NAME_SAFE}
+    networks:
+      - branch_net
     environment:
-      - DOTNET_ENVIRONMENT=Docker
-      - SERVER_URL=http://server:5000
+      ASPNETCORE_URLS: http://+:80
+
+  oidc-client:
+    image: oidc-client-${BRANCH_NAME_SAFE}
+    networks:
+      - branch_net
     depends_on:
-      - server
+      - oidc-server
+
+networks:
+  branch_net:
+    external: true
