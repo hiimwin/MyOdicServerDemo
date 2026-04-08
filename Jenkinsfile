@@ -2,13 +2,11 @@ pipeline {
     agent any
 
     environment {
-        IMAGE_NAMES = []
-        IMAGE_NAMES_BRANCH = []
         BRANCH_SUFFIX = "${env.BRANCH_NAME.replaceAll('/', '_')}"
     }
 
     stages {
-        stage('Declarative: Checkout SCM') {
+        stage('Checkout SCM') {
             steps {
                 checkout([$class: 'GitSCM',
                     branches: [[name: env.BRANCH_NAME]],
@@ -32,10 +30,11 @@ pipeline {
         stage('Parse docker-compose.yml') {
             steps {
                 script {
-                    IMAGE_NAMES = sh(script: "docker-compose config | grep image: | awk '{print \$2}'", returnStdout: true)
-                                    .trim()
-                                    .split('\n')
-                    IMAGE_NAMES_BRANCH = IMAGE_NAMES.collect { "${it}-${BRANCH_SUFFIX}" }
+                    // Biến mảng chỉ khai báo trong script
+                    def IMAGE_NAMES = sh(script: "docker-compose config | grep image: | awk '{print \$2}'", returnStdout: true)
+                                        .trim()
+                                        .split('\n')
+                    def IMAGE_NAMES_BRANCH = IMAGE_NAMES.collect { "${it}-${BRANCH_SUFFIX}" }
                     echo "Detected images: ${IMAGE_NAMES}"
                     echo "Images with branch suffix: ${IMAGE_NAMES_BRANCH}"
                 }
@@ -46,10 +45,9 @@ pipeline {
             steps {
                 dir("${env.WORKSPACE}") {
                     script {
-                        IMAGE_NAMES_BRANCH.eachWithIndex { imageName, idx ->
-                            def dockerfile = (idx == 0) ? 'Dockerfile.client' : 'Dockerfile.server'
-                            sh "docker build -t ${imageName} -f ${dockerfile} ."
-                        }
+                        // Giả sử chỉ có 2 image: client và server
+                        sh "docker build -t oidc-client-${BRANCH_SUFFIX} -f Dockerfile.client ."
+                        sh "docker build -t oidc-server-${BRANCH_SUFFIX} -f Dockerfile.server ."
                     }
                 }
             }
