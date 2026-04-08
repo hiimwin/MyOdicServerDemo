@@ -1,109 +1,84 @@
 pipeline {
     agent any
     environment {
-        DOCKER_REGISTRY = 'your-docker-registry.com'
-        // Tên image sẽ thêm hậu tố branch để không xung đột
-        BRANCH_SUFFIX = "${env.BRANCH_NAME.replaceAll('/', '_')}"
-    }
-    options {
-        timeout(time: 40, unit: 'MINUTES')
+        BRANCH_TAG = "${env.BRANCH_NAME.replaceAll('/', '_')}" // fix tên branch cho Docker tag
     }
     stages {
-
         stage('Checkout') {
             steps {
-                echo "Checking out branch: ${env.BRANCH_NAME}"
                 checkout scm
             }
         }
-
-        stage('Check Docker') {
+        stage('Check Docker & Compose') {
             steps {
                 sh 'docker --version'
                 sh 'docker-compose --version'
             }
         }
-
-        stage('Parse docker-compose.yml for images') {
+        stage('Parse docker-compose.yml') {
             steps {
                 script {
-                    dir('MyOidcServerDemo') {
-                        IMAGE_NAMES = sh(
-                            script: "docker-compose config | grep 'image:' | awk '{print \$2}'",
-                            returnStdout: true
-                        ).trim().split("\n")
-                        echo "Detected images: ${IMAGE_NAMES}"
-                        // Thêm suffix branch
-                        IMAGE_NAMES = IMAGE_NAMES.collect { it + "-${BRANCH_SUFFIX}" }
-                        echo "Images with branch suffix: ${IMAGE_NAMES}"
-                    }
+                    // Lấy tên image từ docker-compose.yml
+                    IMAGE_NAMES = sh(
+                        script: "docker-compose config | grep image: | awk '{print \$2}'",
+                        returnStdout: true
+                    ).trim().split('\n')
+
+                    echo "Detected images: ${IMAGE_NAMES}"
+
+                    // Thêm branch suffix
+                    IMAGE_NAMES_BRANCH = IMAGE_NAMES.collect { it + '-' + BRANCH_TAG }
+                    echo "Images with branch suffix: ${IMAGE_NAMES_BRANCH}"
                 }
             }
         }
-
         stage('Build Docker Images') {
             steps {
-                dir('MyOidcServerDemo') {
-                    sh "docker-compose build"
-                }
-            }
-        }
-
-        stage('Start Containers for Test') {
-            steps {
-                dir('MyOidcServerDemo') {
-                    sh 'docker-compose up -d'
-                    sh 'sleep 5' // wait container ready
-                }
-            }
-        }
-
-        stage('Smoke Test Containers') {
-            steps {
-                dir('MyOidcServerDemo') {
-                    echo 'Running basic smoke tests...'
-                    sh '''
-                    # Example: check oidc server is running
-                    curl -f http://localhost:5000/.well-known/openid-configuration || exit 1
-                    '''
-                }
-            }
-        }
-
-        stage('Push Docker Images (Master Only)') {
-            when {
-                branch 'master'
-            }
-            steps {
-                dir('MyOidcServerDemo') {
+                dir("${WORKSPACE}") {
                     script {
-                        IMAGE_NAMES.each { img ->
-                            def baseName = img.replaceAll("-${BRANCH_SUFFIX}\$", "")
-                            def target = "${DOCKER_REGISTRY}/${baseName}:latest"
-                            echo "Tag & push ${img} -> ${target}"
-                            sh "docker tag ${img} ${target}"
-                            sh "docker push ${target}"
+                        IMAGE_NAMES.eachWithIndex { image, idx ->
+                            sh "docker build -t ${IMAGE_NAMES_BRANCH[idx]} -f Dockerfile.${image.contains('server') ? 'server' : 'client'} ."
                         }
                     }
                 }
             }
         }
+        stage('Start Containers for Test') {
+            steps {
+                dir("${WORKSPACE}") {
+                    script {
+                        // Tạo docker-compose override runtime với tag branch
+                        def composeContent = readFile('docker-compose.yml')
+                        IMAGE_NAMES.eachWithIndex { image, idx ->
+                            composeContent = composeContent.replaceAll(
+                                "(image:\\s*${image})", "image: ${IMAGE_NAMES_BRANCH[idx]}"
+                            )
+                        }
+                        writeFile file: 'docker-compose.branch.yml', text: composeContent
 
-    }
-
-    post {
-        always {
-            dir('MyOidcServerDemo') {
-                echo 'Cleaning up containers and dangling images...'
-                sh 'docker-compose down -v || true'
-                sh 'docker system prune -f || true'
+                        sh "docker-compose -f docker-compose.branch.yml up -d"
+                        sh "sleep 5"
+                    }
+                }
             }
         }
-        success {
-            echo 'Build and test completed successfully!'
+        stage('Smoke Test Containers') {
+            steps {
+                script {
+                    echo "Running basic smoke tests..."
+                    // ví dụ test server endpoint
+                    sh "curl -f http://localhost:5000/.well-known/openid-configuration"
+                }
+            }
         }
-        failure {
-            echo 'Build or tests failed!'
+    }
+    post {
+        always {
+            dir("${WORKSPACE}") {
+                echo "Cleaning up containers and dangling images..."
+                sh "docker-compose -f docker-compose.branch.yml down -v"
+                sh "docker system prune -f"
+            }
         }
     }
 }
