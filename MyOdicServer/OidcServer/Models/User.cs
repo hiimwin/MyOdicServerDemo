@@ -1,4 +1,4 @@
-﻿namespace OidcServer.Models
+namespace OidcServer.Models
 {
     public class User
     {
