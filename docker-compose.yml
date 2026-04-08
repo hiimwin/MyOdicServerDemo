@@ -1,32 +1,67 @@
-services:
-  api:
-    build:
-      context: .
-      dockerfile: Dockerfile.server
-    container_name: oidc-api
-    ports:
-      - "5000:8080"
-    environment:
-      - ASPNETCORE_ENVIRONMENT=Docker
-      - ASPNETCORE_URLS=http://+:8080   
-    networks:
-      - oidc-net
+pipeline {
+    agent any
 
-  client:
-    build:
-      context: .
-      dockerfile: Dockerfile.client
-    container_name: oidc-client
-    ports:
-      - "5001:8080"
-    environment:
-      - ASPNETCORE_ENVIRONMENT=Docker
-      - ASPNETCORE_URLS=http://+:8080   
-    depends_on:
-      - api
-    networks:
-      - oidc-net
+    environment {
+        COMPOSE_PROJECT_NAME = "oidc-app"
+    }
 
-networks:
-  oidc-net:
-    driver: bridge
+    stages {
+
+        stage('Checkout') {
+            steps {
+                git branch: 'feature/cicd-docker-pipeline',
+                    url: 'https://github.com/hiimwin/MyOdicServerDemo.git',
+                    credentialsId: 'github-token'
+            }
+        }
+
+        stage('Stop Old Containers') {
+            steps {
+                sh '''
+                echo "Stop old containers"
+                docker-compose down -v || true
+                '''
+            }
+        }
+
+        stage('Build & Run with Docker Compose') {
+            steps {
+                sh '''
+                echo "Build & start containers"
+                docker-compose up -d --build
+                '''
+            }
+        }
+
+        stage('Check Running Containers') {
+            steps {
+                sh '''
+                echo "Running containers:"
+                docker ps
+                '''
+            }
+        }
+
+        stage('Test Endpoint') {
+            steps {
+                sh '''
+                echo "Testing client endpoint..."
+                sleep 5
+                curl -I http://localhost:5001 || exit 1
+                '''
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "CI/CD SUCCESS - App is running"
+        }
+        failure {
+            echo "CI/CD FAILED"
+        }
+        always {
+            sh 'docker ps'
+        }
+    }
+}
