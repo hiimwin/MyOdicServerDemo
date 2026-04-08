@@ -1,40 +1,40 @@
 pipeline {
     agent any
 
+    options {
+        skipDefaultCheckout()
+        timeout(time: 30, unit: 'MINUTES')
+    }
+
     environment {
-        COMPOSE_PROJECT_NAME = "oidc-app"
-        REPO_URL = "https://github.com/hiimwin/MyOidcServerDemo.git"
-        REPO_API_IMAGE = "hiimwin/oidc-api"
-        REPO_CLIENT_IMAGE = "hiimwin/oidc-client"
+        DOCKER_REGISTRY = 'docker.io'
+        DOCKER_CREDENTIALS = 'dockerhub-creds'
     }
 
     stages {
-        stage('Clone Repo') {
+        stage('Checkout') {
             steps {
-                script {
-                    // Xóa folder nếu tồn tại trước khi clone
-                    sh '''
-                    if [ -d "MyOidcServerDemo" ]; then
-                        rm -rf MyOidcServerDemo
-                    fi
-                    git clone $REPO_URL
-                    '''
-                }
+                checkout scm
             }
         }
 
-        stage('Build & Run Docker Compose') {
+        stage('Check Docker') {
+            steps {
+                sh 'docker --version'
+                sh 'docker-compose --version'
+            }
+        }
+
+        stage('Build & Start Docker Compose') {
             steps {
                 dir('MyOidcServerDemo') {
                     sh '''
-                    echo "Stopping old containers..."
-                    docker-compose down -v || true
-
-                    echo "Building containers..."
-                    docker-compose build
-
-                    echo "Starting containers..."
-                    docker-compose up -d
+                        echo "Stopping old containers..."
+                        docker-compose down -v
+                        echo "Building containers..."
+                        docker-compose build
+                        echo "Starting containers..."
+                        docker-compose up -d
                     '''
                 }
             }
@@ -43,59 +43,36 @@ pipeline {
         stage('Wait for API') {
             steps {
                 sh '''
-                echo "Waiting for API on localhost:5000..."
-                for i in {1..12}; do
-                    curl -s http://localhost:5000 && break
-                    echo "Waiting 5s..."
-                    sleep 5
-                done
+                    echo "Waiting for API to be ready..."
+                    sleep 10
                 '''
             }
         }
 
         stage('Test Client') {
             steps {
-                sh '''
-                echo "Testing Client on localhost:5001..."
-                curl -s http://localhost:5001 || exit 1
-                '''
+                sh 'curl -f http://localhost:5000 || exit 1'
             }
         }
 
         stage('Push Docker Images (Master Only)') {
-            when { branch 'master' }
+            when {
+                branch 'master'
+            }
             steps {
-                dir('MyOidcServerDemo') {
-                    script {
-                        docker.withRegistry('https://docker.io', 'dockerhub-creds') {
-                            sh '''
-                            docker-compose build
-                            docker tag oidc-app_api:latest $REPO_API_IMAGE:latest
-                            docker tag oidc-app_client:latest $REPO_CLIENT_IMAGE:latest
-                            docker push $REPO_API_IMAGE:latest
-                            docker push $REPO_CLIENT_IMAGE:latest
-                            '''
-                        }
-                    }
+                withDockerRegistry([ credentialsId: env.DOCKER_CREDENTIALS, url: env.DOCKER_REGISTRY ]) {
+                    sh 'docker-compose push'
                 }
             }
         }
     }
 
     post {
-        success {
-            echo "CI/CD SUCCESS - App is running"
-        }
-        failure {
-            echo "CI/CD FAILED - Showing logs..."
-            dir('MyOidcServerDemo') {
-                sh 'docker-compose logs || true'
-            }
-        }
         always {
-            echo "Cleaning up containers..."
+            echo 'Cleaning up containers...'
             dir('MyOidcServerDemo') {
                 sh 'docker-compose down -v || true'
+                sh 'docker-compose logs || true'
             }
         }
     }
